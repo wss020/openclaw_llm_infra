@@ -1,24 +1,24 @@
-# 🚀 OpenClaw Enterprise LLM Infrastructure
+# 🚀 OpenClaw LLM Infrastructure
 
 ![Architecture](https://img.shields.io/badge/Architecture-3--Layer-blue)
 ![Multi-Model](https://img.shields.io/badge/Multi--Model-Supported-green)
 ![Vendor Decoupled](https://img.shields.io/badge/Vendor-Decoupled-orange)
 ![Zero Downtime](https://img.shields.io/badge/Upgrade-Zero%20Downtime-brightgreen)
 
-> Enterprise-Grade LLM Gateway Architecture  
+> LLM Gateway Architecture  
 > Built with OpenClaw + vLLM Provider + Model Router
 
 ---
 
-# 📐 Architecture Overview
+# 📐 一、架构总览
 
-## 🔹 Three-Layer Model
+## 🔹 三层模型架构
 
 ```mermaid
 flowchart TD
-    A[Application Layer<br/>OpenClaw / Agents / Workflows]
-    B[Model Gateway Layer<br/>Model Router]
-    C[Model Runtime Layer<br/>GPU / External APIs]
+    A[应用层<br/>OpenClaw / Agents]
+    B[模型网关层<br/>Model Router]
+    C[模型执行层<br/>GPU / 外部 API]
 
     A --> B
     B --> C
@@ -26,7 +26,7 @@ flowchart TD
 
 ---
 
-## 🔹 Concrete Deployment Structure
+## 🔹 实际部署拓扑
 
 ```mermaid
 flowchart TD
@@ -34,9 +34,9 @@ flowchart TD
     VP[vLLM Provider]
     MR[Model Router]
 
-    GPU[Internal GPU Model]
-    EXT[External API Model]
-    EXP[Experimental Model]
+    GPU[内网 GPU 模型]
+    EXT[外部 API 模型]
+    EXP[实验模型]
 
     OC --> VP
     VP --> MR
@@ -47,239 +47,155 @@ flowchart TD
 
 ---
 
-# 🧠 Design Philosophy
+# 🧠 二、核心设计理念
 
-## Protocol Abstraction
+## 1️⃣ 协议抽象层
 
-All upstream communication uses **OpenAI-compatible schema**:
+统一使用 OpenAI Schema：
 
-```http
+```bash
 POST /v1/chat/completions
 ```
 
-Benefits:
+优势：
 
-- Unified interface
-- Vendor independence
-- SDK ecosystem compatibility
-- Lower maintenance cost
-- Easy model replacement
-
-The Router handles:
-
-- Model rewriting
-- Authentication
-- Routing logic
-- Protocol translation (if needed)
+- 供应商可替换
+- 应用层零耦合
+- 易扩展
+- 易升级
+- 支持多模型并存
 
 ---
 
-# 🏗 Infrastructure Layers
+## 2️⃣ 模型别名机制（Alias）
 
-## 1️⃣ Application Layer
+| 虚拟模型名 | 实际模型 |
+|------------|----------|
+| openai/gpt-4o | 内网 GPU |
+| openai/o1 | 外部 API |
+| openai/gpt-4o-mini | 小模型 |
 
-- OpenClaw
-- Agents
-- Workflows
-- RAG Pipelines
-
-Responsibilities:
-
-- Generate prompts
-- Consume responses
-- Manage sessions
-
-> This layer never directly depends on real model vendors.
+实际模型由 Router 控制。
 
 ---
 
-## 2️⃣ Model Gateway Layer (Router)
+# 🏗 三、组件职责
 
-Core Responsibilities:
+## 🔹 OpenClaw
 
-- Model alias management
-- Multi-vendor routing
-- Authentication unification
-- Logging
-- Cost tracking
-- Rate limiting
-- Circuit breaker logic
-- A/B testing
+- Prompt 构造
+- Agent 管理
+- Session 管理
+- 工作流控制
 
-This is the strategic control point of the system.
+## 🔹 vLLM Provider
 
----
+- OpenAI-compatible 接口
+- 自定义 Base URL
 
-## 3️⃣ Model Runtime Layer
+## 🔹 Model Router
 
-Includes:
+- 多模型路由
+- rewriteModel 映射
+- 统一鉴权
+- 故障回退
 
-- vLLM (local GPU)
-- OpenAI
-- Claude
-- Gemini
-- Any HTTP inference engine
+## 🔹 模型执行层
 
-This layer only performs inference.
+- 内网 GPU
+- 外部 API
+- 实验模型
 
 ---
 
-# 🔁 Multi-Model Routing (Different IP / Different Vendor)
+# 🔄 四、零停机升级
 
-## Example Scenario
-
-| Model | Location | Base URL |
-|--------|----------|----------|
-| Model A | Internal GPU | http://10.128.200.101:9999/v1 |
-| Model B | External API | https://api.vendor.com/v1 |
-| Model C | Experimental | http://10.128.200.102:8000/v1 |
+1. 修改 rewriteModel  
+2. 重启 Router  
+3. 应用层无需改动  
 
 ---
 
-## 🔧 Router Configuration Example
+# 🚀 五、快速启动
 
-<details>
-<summary>Click to expand MODEL_ROUTES_JSON example</summary>
+### 首次构建
 
-```json
-MODEL_ROUTES_JSON=[
-  {
-    "match":"openai/gpt-4o",
-    "upstream":"${MODEL_A_BASE}",
-    "auth":"bearer:${MODEL_A_KEY}",
-    "rewriteModel":"${MODEL_A_NAME}"
-  },
-  {
-    "match":"openai/o1",
-    "upstream":"${MODEL_B_BASE}",
-    "auth":"bearer:${MODEL_B_KEY}",
-    "rewriteModel":"${MODEL_B_NAME}"
-  },
-  {
-    "match":"openai/gpt-4o-mini",
-    "upstream":"${MODEL_C_BASE}",
-    "auth":"bearer:${MODEL_C_KEY}",
-    "rewriteModel":"${MODEL_C_NAME}"
-  },
-  {
-    "match":"*",
-    "upstream":"${MODEL_A_BASE}",
-    "auth":"bearer:${MODEL_A_KEY}",
-    "rewriteModel":"${MODEL_A_NAME}"
-  }
-]
+```bash
+docker compose up -d --build
 ```
 
-</details>
+### 日常启动
 
----
-
-# 🔄 Zero-Downtime Upgrade Strategy
-
-To upgrade a model:
-
-1. Modify `rewriteModel` in router config
-2. Restart router
-3. OpenClaw remains untouched
-
-No application changes required.
-
----
-
-# 🛡 Reliability & Governance
-
-## Observability
-
-- Structured logging
-- Token usage metrics
-- Per-model cost tracking
-- Latency monitoring
-
-## Failover Strategy
-
-```mermaid
-flowchart LR
-    Primary --> Secondary --> Fallback
+```bash
+docker compose up -d
 ```
 
-## Retry Policy
+### 仅更新 Router
 
-- Exponential backoff
-- Circuit breaker logic
-
----
-
-# 🔐 Security Best Practices
-
-- Store API keys in environment variables
-- Avoid hardcoded secrets
-- Use Docker network isolation
-- Restrict router to internal network
-- Rotate keys regularly
-
----
-
-# 📊 Infrastructure Maturity
-
-This system qualifies as:
-
-**Enterprise-Grade LLM Infrastructure Platform**
-
-Features:
-
-- ✅ Protocol abstraction
-- ✅ Multi-model routing
-- ✅ Vendor decoupling
-- ✅ Zero-downtime upgrade
-- ✅ Extensible architecture
-- ✅ Production-ready Docker deployment
-
----
-
-# 🚀 Future Evolution
-
-Possible Enhancements:
-
-- Intelligent model selection engine
-- Cost-aware routing
-- Dynamic load balancing
-- Distributed router cluster
-- Multi-region deployment
-- SLA enforcement layer
-- GPU auto-scaling
-- Centralized AI gateway platform
-
----
-
-# 📌 Summary
-
-This is no longer simple API integration.
-
-This is a modular, extensible, vendor-agnostic LLM infrastructure system.
-
----
-
-# 📂 Suggested Repository Structure
-
-```
-openclaw-llm-infra/
-├── README.md
-├── docker-compose.yml
-├── .env.example
-├── docs/
-│   ├── architecture.md
-│   ├── routing.md
-│   ├── security.md
-│   └── upgrade.md
+```bash
+docker compose up -d --force-recreate model-router
 ```
 
 ---
 
-# 👨‍💻 Maintainer Notes
+# 🛠 六、运维命令速查表
 
-- Always route OpenClaw → vLLM → Router
-- Never let OpenClaw directly hit external vendors
-- Keep model names virtual at the application layer
-- Treat models as replaceable resources
+| 操作 | 命令 |
+|------|------|
+| 启动所有服务 | `docker compose up -d` |
+| 首次构建 | `docker compose up -d --build` |
+| 强制重建 Router | `docker compose up -d --force-recreate model-router` |
+| 重建所有服务 | `docker compose up -d --force-recreate` |
+| 查看日志 | `docker compose logs -f` |
+| 查看服务状态 | `docker compose ps` |
+| 停止服务 | `docker compose down` |
+| 删除容器和网络 | `docker compose down -v` |
 
 ---
+
+# 📌 七、推荐使用场景
+
+### 场景 1：第一次部署
+
+```bash
+docker compose up -d --build
+```
+
+### 场景 2：正常重启
+
+```bash
+docker compose up -d
+```
+
+### 场景 3：修改 MODEL_ROUTES_JSON
+
+```bash
+docker compose up -d --force-recreate model-router
+```
+
+### 场景 4：修改 docker-compose.yml
+
+```bash
+docker compose up -d --force-recreate
+```
+
+### 场景 5：修改 Dockerfile
+
+```bash
+docker compose up -d --build
+```
+
+---
+
+# 🔐 八、安全建议
+
+- 所有 Key 使用 `.env`
+- 不提交真实 IP
+- 生产环境使用：
+
+```bash
+OPENCLAW_GATEWAY_BIND=loopback
+```
+
+---
+
